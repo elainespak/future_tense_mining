@@ -18,19 +18,20 @@ def file_to_string(filepath):
     return data
 
 def pre_process_raw_text(text):
+    '''
+    SEC filings include HTML & XBRL codes.
+    There is no perfect solution to clean the mess up
+    '''
     replacements = [
-        ('&#8217', '\''),
-        (' \[Text Block\]', '.'),
-        ('No. ', 'No.'),
-        ('<.*?>', ''),
-        ('\s\s+', ' '),
-        (';|\n|\t|\r|&#160|&#8221|&#8220', ' '),
-        # added
-        ('&amp|&gt|&lt', ' '),
-        ('FONT-SIZE: \d+pt', ' ')
+        ('&(.{2,6});', ' '), # Replace all Unicode strings
+        ('<.*?>', ''), # Remove all HTML tags
+        ('\n', ' '),
+        ('\t', ' '),
+        ('\r', ' ')
     ]
     for old, new in replacements:
         text = re.sub(old, new, text)
+    text = re.sub(' +', ' ', text)
     return text
 
 def get_clean_sentence(string):
@@ -106,4 +107,65 @@ print(f'Error opening these files: {error_open}')
 print(f'Error pre-processing these files: {error_pp}')
 print(f'Error cleaning these files into sentences: {error_clean}')
 
+
+
+
+#== Test ground ====================================================================
+# reference: https://github.com/EricHe98/Financial-Statements-Text-Analysis/blob/master/Documentation/Cleaning-Raw-Filings.md
+
+df_us_10k_gram_index = pd.read_csv('D:/논문-Future Tense Mining/data/snp_10k.csv') ### *** --- *** YOU NEED TO DEFINE *** --- *** ###
+sec_path = r'D:/논문-Future Tense Mining/data/SEC_10K/' ### *** --- *** YOU NEED TO DEFINE *** --- *** ###
+
+adsh = df_us_10k_gram_index.adsh[0]
+string = file_to_string(sec_path + adsh + '.txt')
+
+import re
+
+# Step 4: Return everything between the 10-K and the tags
+start = re.search('(?<=<TYPE>10-K).*?', string).start()
+end = re.search('.*?(?=</TEXT>)', string).end()
+string = string[start:end]
+
+# Step 5
+string = re.sub('(?<=<TYPE>).*?(?=\n\<)', '', string)
+string = re.sub('<TYPE>', '', string)
+
+# Steop 6
+string = re.sub('(?<=<SEQUENCE>).*?(?=\n\<)', '', string)
+string = re.sub('<SEQUENCE>', '', string)
+string = re.sub('(?<=<FILENAME>).*?(?=\n\<)', '', string)
+string = re.sub('<FILENAME>', '', string)
+string = re.sub('(?<=<DESCRIPTION>).*?(?=\n\<)', '', string)
+string = re.sub('<DESCRIPTION>', '', string)
+
+start2 = re.search('<head>', string).start()
+end2 = re.search('</head>',string).end()
+string = string[:start2] + string[end2:]
+
+start3 = re.search('<(table)', string).start()
+end3 = re.search('</table>',string).end()
+string = string[:start3] + string[end3:]
+
+# Step 7: Insert ">Â°Item" symbol
+pattern = r'>Item( \d{1,2}\D)|>Item(\d{1,2}\D)|>ITEM( \d{1,2}\D)|>ITEM(\d{1,2}\D)'
+temp = [(m.start(0), m.end(0)) for m in re.finditer(pattern, string)]
+for s,e in temp:
+    print(string[s-30:e+30])
+    print('\n')
+
+string = re.sub(pattern, r'>Â°Item\g<0>', string)
+
+# Step 8: Remove all HTML tags
+string = re.sub('<.*?>', '', string)
+
+# Step 9: Replace all Unicode strings
+string = re.sub('&(.{2,6});', ' ', string)
+
+# Step 10: Replace multiple spaces with a single space
+string = string.replace('\n',' ')
+string = string.replace('\t',' ')
+string = re.sub(' +', ' ', string)
+
+# Check results
+sections = string.split('Â°Item')
 
